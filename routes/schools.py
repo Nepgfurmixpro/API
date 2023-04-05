@@ -1,3 +1,4 @@
+from random import randrange
 from fastapi import APIRouter, HTTPException, Header, Request
 import bcrypt
 from pydantic import BaseModel
@@ -7,14 +8,14 @@ from cassandra.cqlengine.query import BatchQuery
 from snowflake import create_snowflake
 
 from models import APISchool, Channel, Message, School, SchoolInvite, SchoolMemberPermissions, SchoolUser, User, get_message_data, get_school_member, make_bucket, validate_email, without
-
+from database import pika_channel
 
 router = APIRouter(prefix='/schools')
 
 @router.put('/join/{code}')
 def join_school(code: str, authorization: str | None = Header(default=None)):
     user = authorize(authorization)
-    invites = SchoolInvite.objects.filter(user_id=user.id, code=code)
+    invites = SchoolInvite.objects.filter(email=user.email, code=code)
     invite: SchoolInvite | None = None
     if len(invites) > 0:
         invite = invites[0]
@@ -107,6 +108,8 @@ async def create_message(info: MessageContent, id: int, channel_id: int, authori
             bucket = make_bucket(id)
             message = Message(channel_id=channel.channel_id, bucket=bucket, message_id=id, author_id=user.id, content=info.content)
             message.save()
+
+            pika_channel.basic_publish(exchange='event', routing_key='message', body=str(get_message_data(message)))
             
             return get_message_data(message)
 
@@ -119,6 +122,20 @@ async def create_message(info: MessageContent, id: int, channel_id: int, authori
         'message': 'Channel or school unavailable',
         'code': 6800
     })
+
+@router.delete('/{id}/channels/{channel_id}/messages/{message_id}')
+async def delete_message(id: int, channel_id: int, message_id: int, authorization: str | None = Header(default=None)):
+    user = authorize(authorization)
+    school_member = get_school_member(user, id)
+
+    channels = Channel.objects.filter(school_id=id, channel_id=channel_id)
+    if len(channels) > 0:
+        channel = channels[0]
+        messages = Message.objects.filter(channel_id=channel.channel_id, bucket=make_bucket(message_id), message_id=message_id)
+        if len(messages):
+            message: Message = messages[0]
+            if message.author_id == school_member.user_id:
+                message.delete()
 
 class ChannelInfo(BaseModel):
     name: str
@@ -154,16 +171,53 @@ async def create_channel(info: ChannelInfo, id: int, authorization: str | None =
     if school_member.permissions & SchoolMemberPermissions.CHANNEL_CREATE:
         channel = Channel(school_id=id, channel_id=create_snowflake(), description=info.description, name=info.name, type=info.type)
         channel.save()
-        return channel
+        return channel.get_pretty()
     else:
         raise HTTPException(status_code=400, detail={
             'message': 'No permission',
             'code': 20000
         })
 
+@router.get('/{id}/channels')
+async def get_channels(id: int, authorization: str | None = Header(default=None)):
+    user = authorize(authorization)
+    school_member = get_school_member(user, id)
+
+    channels = Channel.objects.filter(school_id=id)
+
+    out: list[dict] = []
+    for channel in channels:
+        out.append(channel.get_pretty())
+
+    return out
+    
+class Invites(BaseModel):
+    recipients: list[str]
+
+def generate_code(length: int) -> str:
+    return str(randrange(int('1' * length), int('9' * length)))
+
 @router.put('/{id}/invite')
-async def invite_users(authorization: str | None = Header(default=None)):
+async def invite_users(info: Invites, id: int, authorization: str | None = Header(default=None)):
+    user = authorize(authorization)
+    school_member = get_school_member(user, id)
+
+    if school_member.permissions & SchoolMemberPermissions.SCHOOL_INVITE:
+        code = generate_code(6)
+        if not len(info.recipients) > 0:
+            raise HTTPException(status_code=400, detail={
+                'message': 'No recipients',
+                'code': 80000
+            })
+        for recipient in info.recipients:
+            invite = SchoolInvite(email=recipient, code=code, school_id=id, ttl=60*60*24)
+            invite.save()
+        return {
+            'message': 'Invites created',
+            'code': 30000
+        }
+
     raise HTTPException(status_code=400, detail={
-        'message': 'Failed to create invite',
+        'message': 'Failed to create invite. You have no permission',
         'code': 20045
     })

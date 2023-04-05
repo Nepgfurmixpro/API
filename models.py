@@ -49,7 +49,7 @@ class School(Model):
 class SchoolInvite(Model):
     __table_name__ = 'school_invites'
 
-    user_id = columns.BigInt(primary_key=True)
+    email = columns.Text(primary_key=True)
     code = columns.Text(primary_key=True)
     school_id = columns.BigInt()
 
@@ -63,6 +63,11 @@ class Channel(Model):
     type = columns.Integer()
     name = columns.Text()
     description = columns.Text()
+
+    def get_pretty(self):
+        out_channel = without(dict(self), {'school_id', 'channel_id'})
+        out_channel['id'] = self.channel_id
+        return out_channel
 
 class Message(Model):
     __table_name__ = 'messages'
@@ -129,3 +134,4 @@ class SchoolMemberPermissions():
     CHANNEL_MODIFY = 1 << 4
     CHANNEL_CREATE = 1 << 5
     ROLE_ASSIGN = 1 << 6
+    SCHOOL_INVITE = 1 << 7
