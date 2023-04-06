@@ -95,11 +95,11 @@ class MessageContent(BaseModel):
 async def create_message(info: MessageContent, id: int, channel_id: int, authorization: str | None = Header(default=None)):
     user = authorize(authorization)
     school_member = get_school_member(user, id)
-    if not school_member.permissions & SchoolMemberPermissions.MESSAGE_CREATE:
-        raise HTTPException(status_code=400, detail={
-            'message': 'You do not have permission',
-            'code': 90045
-        })
+    #if not school_member.permissions & SchoolMemberPermissions.MESSAGE_CREATE:
+    #    raise HTTPException(status_code=400, detail={
+    #        'message': 'You do not have permission',
+    #        'code': 90045
+    #    })
     channels = Channel.objects.filter(school_id=id, channel_id=channel_id)
     if len(channels) > 0:
         if info.content != None:

@@ -19,7 +19,7 @@ class CreateUser(BaseModel):
 
 @router.post('/users/create')
 async def create_user(req: Request, info: CreateUser):
-    email = info.email
+    email = info.email.lower()
 
     if not validate_email(email):
         raise HTTPException(status_code=400, detail={

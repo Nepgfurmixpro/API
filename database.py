@@ -8,11 +8,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-db = Cluster(["173.31.60.92"], auth_provider=PlainTextAuthProvider(os.getenv('SCYLLA_USERNAME'), os.getenv('SCYLLA_PASSWORD')), connect_timeout=20000).connect()
+db = Cluster(["192.168.7.140"], auth_provider=PlainTextAuthProvider(os.getenv('SCYLLA_USERNAME'), os.getenv('SCYLLA_PASSWORD')), connect_timeout=20000).connect()
 db.set_keyspace('rsaproject')
 connection.set_session(db)
 
-conn = pika.BlockingConnection(pika.ConnectionParameters('173.31.60.92', credentials=pika.PlainCredentials(os.getenv('RABBITMQ_USERNAME'), os.getenv('RABBITMQ_PASSWORD'))))
+conn = pika.BlockingConnection(pika.ConnectionParameters('192.168.7.140', credentials=pika.PlainCredentials(os.getenv('RABBITMQ_USERNAME'), os.getenv('RABBITMQ_PASSWORD'))))
 pika_channel = conn.channel()
 
 pika_channel.queue_declare(queue='events', durable=True)
